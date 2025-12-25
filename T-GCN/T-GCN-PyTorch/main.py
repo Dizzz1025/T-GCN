@@ -8,7 +8,10 @@ import utils.callbacks
 import utils.data
 import utils.email
 import utils.logging
+from pytorch_lightning.loggers import TensorBoardLogger
 
+# import os
+# print("CWD =", os.getcwd())
 
 DATA_PATHS = {
     "shenzhen": {"feat": "data/sz_speed.csv", "adj": "data/sz_adj.csv"},
@@ -51,7 +54,15 @@ def main_supervised(args):
     model = get_model(args, dm)
     task = get_task(args, model, dm)
     callbacks = get_callbacks(args)
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks)
+    # trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks)
+    logger = TensorBoardLogger("lightning_logs", name="TGCN")
+    trainer = pl.Trainer(
+    max_epochs=args.max_epochs,
+    accelerator=args.accelerator,
+    devices=args.devices,
+    callbacks=callbacks,
+    logger = logger
+    )
     trainer.fit(task, dm)
     results = trainer.validate(datamodule=dm)
     return results
@@ -65,7 +76,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser = pl.Trainer.add_argparse_args(parser)
+    # parser = pl.Trainer.add_argparse_args(parser)
 
     parser.add_argument(
         "--data", type=str, help="The name of the dataset", choices=("shenzhen", "losloop"), default="losloop"
@@ -75,7 +86,7 @@ if __name__ == "__main__":
         type=str,
         help="The name of the model for spatiotemporal prediction",
         choices=("GCN", "GRU", "TGCN"),
-        default="GCN",
+        default="TGCN",
     )
     parser.add_argument(
         "--settings",
@@ -84,6 +95,9 @@ if __name__ == "__main__":
         choices=("supervised",),
         default="supervised",
     )
+    parser.add_argument("--max_epochs", type=int, default=3000, help="Number of training epochs")
+    parser.add_argument("--accelerator", type=str, default="gpu", help="Device type: 'cpu', 'gpu', or 'auto'")
+    parser.add_argument("--devices", type=int, default=1, help="Number of devices to use. E.g., 1 for 1 GPU")
     parser.add_argument("--log_path", type=str, default=None, help="Path to the output console log file")
     parser.add_argument("--send_email", "--email", action="store_true", help="Send email when finished")
 

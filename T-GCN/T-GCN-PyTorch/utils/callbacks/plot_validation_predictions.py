@@ -13,7 +13,7 @@ class PlotValidationPredictionsCallback(BestEpochCallback):
         self.ground_truths.clear()
         self.predictions.clear()
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         super().on_validation_batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
         if trainer.current_epoch != self.best_epoch:
             return
