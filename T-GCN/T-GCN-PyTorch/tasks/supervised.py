@@ -17,7 +17,9 @@ class SupervisedForecastTask(pl.LightningModule):
         pre_len: int = 3,
         learning_rate: float = 1e-3,
         weight_decay: float = 1.5e-3,
-        feat_max_val: float = 1.0,
+        # feat_max_val: float = 1.0,
+        mean: float = 0.0,
+        sigma: float = 1.0,
         **kwargs
     ):
         super(SupervisedForecastTask, self).__init__()
@@ -33,11 +35,13 @@ class SupervisedForecastTask(pl.LightningModule):
             else regressor
         )
         self._loss = loss
-        self.feat_max_val = feat_max_val
-
+        # self.feat_max_val = feat_max_val
+        self.mean = mean
+        self.sigma = sigma
+        self.out_num_nodes = 1
     def forward(self, x):
         # (batch_size, seq_len, num_nodes)
-        batch_size, _, num_nodes = x.size()
+        batch_size, _, _ = x.size()
         # (batch_size, num_nodes, hidden_dim)
         hidden = self.model(x)
         # (batch_size * num_nodes, hidden_dim)
@@ -47,15 +51,15 @@ class SupervisedForecastTask(pl.LightningModule):
             predictions = self.regressor(hidden)
         else:
             predictions = hidden
-        predictions = predictions.reshape((batch_size, num_nodes, -1))
+        predictions = predictions.reshape((batch_size, self.out_num_nodes, -1))
         return predictions
 
     def shared_step(self, batch, batch_idx):
         # (batch_size, seq_len/pre_len, num_nodes)
         x, y = batch
-        num_nodes = x.size(2)
+        # num_nodes = x.size(2)
         predictions = self(x)
-        predictions = predictions.transpose(1, 2).reshape((-1, num_nodes))
+        predictions = predictions.transpose(1, 2).reshape((-1, self.out_num_nodes))
         y = y.reshape((-1, y.size(2)))
         return predictions, y
 
@@ -68,20 +72,23 @@ class SupervisedForecastTask(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         predictions, y = self.shared_step(batch, batch_idx)
+        predictions = predictions * self.sigma + self.mean
         loss = self.loss(predictions, y)
         self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         predictions, y = self.shared_step(batch, batch_idx)
-        predictions = predictions * self.feat_max_val
-        y = y * self.feat_max_val
+        predictions = predictions * self.sigma + self.mean
+        # predictions = predictions * self.feat_max_val
+        # y = y * self.feat_max_val
         loss = self.loss(predictions, y)
         rmse = torch.sqrt(torchmetrics.functional.mean_squared_error(predictions, y))
         mae = torchmetrics.functional.mean_absolute_error(predictions, y)
         accuracy = utils.metrics.accuracy(predictions, y)
         r2 = utils.metrics.r2(predictions, y)
         explained_variance = utils.metrics.explained_variance(predictions, y)
+        err_std = (predictions - y).std()
         metrics = {
             "val_loss": loss,
             "RMSE": rmse,
@@ -89,8 +96,10 @@ class SupervisedForecastTask(pl.LightningModule):
             "accuracy": accuracy,
             "R2": r2,
             "ExplainedVar": explained_variance,
+            'STD': err_std
         }
-        self.log_dict(metrics)
+        print('Val: RSME:', rmse, 'STD:', err_std)
+        self.log_dict(metrics, prog_bar=False, on_step=False, on_epoch=True)
         return predictions.reshape(batch[1].size()), y.reshape(batch[1].size())
 
     def test_step(self, batch, batch_idx):

@@ -25,8 +25,13 @@ class SpatioTemporalCSVDataModule(pl.LightningDataModule):
         self.pre_len = pre_len
         self.split_ratio = split_ratio
         self.normalize = normalize
+        self.test_choose = kwargs.get("test_choose", None)
         self._feat = utils.data.functions.load_features(self._feat_path)
-        self._feat_max_val = np.max(self._feat)
+        # self._feat_max_val = np.max(self._feat)
+        X = self._feat[10699:13999, 1:3]
+        X = X.reshape(-1)
+        self._mean = float(X.mean())
+        self._sigma = float(X.std())
         self._adj = utils.data.functions.load_adjacency_matrix(self._adj_path)
 
     @staticmethod
@@ -34,8 +39,8 @@ class SpatioTemporalCSVDataModule(pl.LightningDataModule):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument("--batch_size", type=int, default=32)
         parser.add_argument("--seq_len", type=int, default=12)
-        parser.add_argument("--pre_len", type=int, default=3)
-        parser.add_argument("--split_ratio", type=float, default=0.8)
+        parser.add_argument("--pre_len", type=int, default=1)
+        parser.add_argument("--split_ratio", type=float, default=None)
         parser.add_argument("--normalize", type=bool, default=True)
         return parser
 
@@ -49,6 +54,7 @@ class SpatioTemporalCSVDataModule(pl.LightningDataModule):
             self.pre_len,
             split_ratio=self.split_ratio,
             normalize=self.normalize,
+            test_choose = self.test_choose,
         )
 
     def train_dataloader(self):
@@ -59,7 +65,7 @@ class SpatioTemporalCSVDataModule(pl.LightningDataModule):
 
     @property
     def feat_max_val(self):
-        return self._feat_max_val
+        return self._mean, self._sigma
 
     @property
     def adj(self):

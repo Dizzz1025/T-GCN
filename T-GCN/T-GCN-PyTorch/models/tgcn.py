@@ -102,13 +102,14 @@ class TGCNCell(nn.Module):
 
 
 class TGCN(nn.Module):
-    def __init__(self, adj, hidden_dim: int, **kwargs):
+    def __init__(self, adj, hidden_dim: int, out_dim: int=1, **kwargs):
         super(TGCN, self).__init__()
         self._input_dim = adj.shape[0]
         self._hidden_dim = hidden_dim
+        self._out_dim = out_dim
         self.register_buffer("adj", torch.FloatTensor(adj))
         self.tgcn_cell = TGCNCell(self.adj, self._input_dim, self._hidden_dim)
-
+        # self.readout = nn.Linear(self._hidden_dim, self._out_dim)
     def forward(self, inputs):
         batch_size, seq_len, num_nodes = inputs.shape
         assert self._input_dim == num_nodes
@@ -119,7 +120,9 @@ class TGCN(nn.Module):
         for i in range(seq_len):
             output, hidden_state = self.tgcn_cell(inputs[:, i, :], hidden_state)
             output = output.reshape((batch_size, num_nodes, self._hidden_dim))
-        return output
+        pooled = output.mean(dim=1, keepdim=True) 
+        # pred = self.readout(pooled)
+        return pooled
 
     @staticmethod
     def add_model_specific_arguments(parent_parser):

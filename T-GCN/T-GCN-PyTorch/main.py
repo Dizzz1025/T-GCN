@@ -9,13 +9,16 @@ import utils.data
 import utils.email
 import utils.logging
 from pytorch_lightning.loggers import TensorBoardLogger
-
-# import os
+from pytorch_lightning.callbacks import EarlyStopping
+import time
+import os
+import csv
 # print("CWD =", os.getcwd())
 
 DATA_PATHS = {
     "shenzhen": {"feat": "data/sz_speed.csv", "adj": "data/sz_adj.csv"},
     "losloop": {"feat": "data/los_speed.csv", "adj": "data/los_adj.csv"},
+    "dpos": {"feat": "data/dpos/dpos5.csv", "adj": "data/dpos/dpos_adj.csv"},
 }
 
 
@@ -31,8 +34,9 @@ def get_model(args, dm):
 
 
 def get_task(args, model, dm):
+    mean, sigma = dm.feat_max_val
     task = getattr(tasks, args.settings.capitalize() + "ForecastTask")(
-        model=model, feat_max_val=dm.feat_max_val, **vars(args)
+        model=model, mean=mean, sigma=sigma, **vars(args)
     )
     return task
 
@@ -40,9 +44,17 @@ def get_task(args, model, dm):
 def get_callbacks(args):
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="train_loss")
     plot_validation_predictions_callback = utils.callbacks.PlotValidationPredictionsCallback(monitor="train_loss")
+    early_stop_callback = EarlyStopping(
+        monitor="RMSE",   # 关键：要和你任务里 log 的名字一致
+        mode="min",
+        patience=30,
+        verbose=True,
+        check_on_train_epoch_end=False,  # 让它在 val 之后判断
+    )
     callbacks = [
         checkpoint_callback,
         plot_validation_predictions_callback,
+        early_stop_callback,
     ]
     return callbacks
 
@@ -52,10 +64,15 @@ def main_supervised(args):
         feat_path=DATA_PATHS[args.data]["feat"], adj_path=DATA_PATHS[args.data]["adj"], **vars(args)
     )
     model = get_model(args, dm)
+    # 参数量统计
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     task = get_task(args, model, dm)
     callbacks = get_callbacks(args)
     # trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks)
-    logger = TensorBoardLogger("lightning_logs", name="TGCN")
+    feat_path = DATA_PATHS[args.data]["feat"]
+    run_name = os.path.splitext(os.path.basename(feat_path))[0]
+    logger = TensorBoardLogger("lightning_logs", name=f'{run_name}_{args.test_choose}')
     trainer = pl.Trainer(
     max_epochs=args.max_epochs,
     accelerator=args.accelerator,
@@ -63,7 +80,11 @@ def main_supervised(args):
     callbacks=callbacks,
     logger = logger
     )
+    t0 = time.perf_counter()
     trainer.fit(task, dm)
+    t1 = time.perf_counter()
+    train_seconds = t1 - t0
+    append_params_time_csv(f"lightning_logs/{run_name}_{args.test_choose}/params_time.csv", total_params, trainable_params, train_seconds)
     results = trainer.validate(datamodule=dm)
     return results
 
@@ -73,13 +94,24 @@ def main(args):
     results = globals()["main_" + args.settings](args)
     return results
 
+def append_params_time_csv(csv_path, total_params, trainable_params, train_seconds):
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True) if os.path.dirname(csv_path) else None
+    file_exists = os.path.exists(csv_path)
+
+    with open(csv_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["total_params", "trainable_params", "train_seconds"])
+        writer.writerow([total_params, trainable_params, f"{train_seconds:.6f}"])
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # parser = pl.Trainer.add_argparse_args(parser)
-
+    pl.seed_everything(42, workers=True)
+    parser.add_argument("--test_choose", type=int, help="振动段选择", choices=(0, 1), default=1)
     parser.add_argument(
-        "--data", type=str, help="The name of the dataset", choices=("shenzhen", "losloop"), default="losloop"
+        "--data", type=str, help="The name of the dataset", choices=("shenzhen", "losloop", "dpos"), default="dpos"
     )
     parser.add_argument(
         "--model_name",
@@ -95,7 +127,7 @@ if __name__ == "__main__":
         choices=("supervised",),
         default="supervised",
     )
-    parser.add_argument("--max_epochs", type=int, default=3000, help="Number of training epochs")
+    parser.add_argument("--max_epochs", type=int, default=300, help="Number of training epochs")
     parser.add_argument("--accelerator", type=str, default="gpu", help="Device type: 'cpu', 'gpu', or 'auto'")
     parser.add_argument("--devices", type=int, default=1, help="Number of devices to use. E.g., 1 for 1 GPU")
     parser.add_argument("--log_path", type=str, default=None, help="Path to the output console log file")

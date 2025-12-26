@@ -20,37 +20,54 @@ class PlotValidationPredictionsCallback(BestEpochCallback):
         self.ground_truths.clear()
         self.predictions.clear()
         predictions, y = outputs
-        predictions = predictions.cpu().numpy()
-        y = y.cpu().numpy()
-        self.ground_truths.append(y[:, 0, :])
-        self.predictions.append(predictions[:, 0, :])
+        # predictions = predictions.cpu().numpy()
+        # y = y.cpu().numpy()
+        # self.ground_truths.append(y[:, 0, :])
+        # self.predictions.append(predictions[:, 0, :])
+        pred = predictions.detach().cpu().squeeze().numpy()  # (987,)
+        gt   = y.detach().cpu().squeeze().numpy()            # (987,)
+        # plt.clf()
+        # fig = plt.figure(figsize=(7, 2), dpi=200)
+        # plt.plot(gt-pred, label="Ground truth")
+        # plt.xlabel("Index")
+        # plt.ylabel("Value")
 
-    def on_fit_end(self, trainer, pl_module):
-        ground_truth = np.concatenate(self.ground_truths, 0)
-        predictions = np.concatenate(self.predictions, 0)
-        tensorboard = pl_module.logger.experiment
-        for node_idx in range(ground_truth.shape[1]):
-            plt.clf()
-            plt.rcParams["font.family"] = "Times New Roman"
-            fig = plt.figure(figsize=(7, 2), dpi=300)
-            plt.plot(
-                ground_truth[:, node_idx],
-                color="dimgray",
-                linestyle="-",
-                label="Ground truth",
-            )
-            plt.plot(
-                predictions[:, node_idx],
-                color="deepskyblue",
-                linestyle="-",
-                label="Predictions",
-            )
-            plt.legend(loc="best", fontsize=10)
-            plt.xlabel("Time")
-            plt.ylabel("Traffic Speed")
-            tensorboard.add_figure(
-                "Prediction result of node " + str(node_idx),
-                fig,
-                global_step=len(trainer.train_dataloader) * self.best_epoch,
-                close=True,
-            )
+        # tb = pl_module.logger.experiment
+        # tb.add_figure(
+        #     f"val_pred/epoch{trainer.current_epoch}_batch{batch_idx}",
+        #     fig,
+        #     global_step=trainer.global_step,
+        #     close=True,
+        # )
+        np.savez('result.npz', pred=pred, gt=gt)
+        
+
+    # def on_fit_end(self, trainer, pl_module):
+    #     ground_truth = np.concatenate(self.ground_truths, 0)
+    #     predictions = np.concatenate(self.predictions, 0)
+    #     tensorboard = pl_module.logger.experiment
+    #     for node_idx in range(ground_truth.shape[1]):
+    #         plt.clf()
+    #         plt.rcParams["font.family"] = "Times New Roman"
+    #         fig = plt.figure(figsize=(7, 2), dpi=300)
+    #         plt.plot(
+    #             ground_truth[:, node_idx],
+    #             color="dimgray",
+    #             linestyle="-",
+    #             label="Ground truth",
+    #         )
+    #         plt.plot(
+    #             predictions[:, node_idx],
+    #             color="deepskyblue",
+    #             linestyle="-",
+    #             label="Predictions",
+    #         )
+    #         plt.legend(loc="best", fontsize=10)
+    #         plt.xlabel("Time")
+    #         plt.ylabel("Traffic Speed")
+    #         tensorboard.add_figure(
+    #             "Prediction result of node " + str(node_idx),
+    #             fig,
+    #             global_step=len(trainer.train_dataloader) * self.best_epoch,
+    #             close=True,
+    #         )

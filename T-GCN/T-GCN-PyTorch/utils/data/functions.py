@@ -16,7 +16,7 @@ def load_adjacency_matrix(adj_path, dtype=np.float32):
 
 
 def generate_dataset(
-    data, seq_len, pre_len, time_len=None, split_ratio=0.8, normalize=True
+    data, seq_len, pre_len, time_len=None, split_ratio=0.8, normalize=True, test_choose=0
 ):
     """
     :param data: feature matrix
@@ -30,23 +30,39 @@ def generate_dataset(
     if time_len is None:
         time_len = data.shape[0]
     if normalize:
-        max_val = np.max(data)
-        data = data / max_val
-    train_size = int(time_len * split_ratio)
-    train_data = data[:train_size]
-    test_data = data[train_size:time_len]
+        # max_val = np.max(data)
+        # data = data / max_val
+        X = data[10699:13999, 1:3]
+        X = X.reshape(-1)
+        mean = float(X.mean())
+        sigma = float(X.std())
+        data[:, 1:3] = (data[:, 1:3] - mean) / sigma
+    # train_size = [10699:13999]
+    train_data = data[10699:13999, 1:3]
+    label_train_data = data[10699:13999, 0:1]
+    if test_choose == 0:
+        print('test_choose:', test_choose)
+        test_data = data[1299:5299, 1:3]
+        label_test_data = data[1299:5299, 0:1]
+    elif test_choose == 1:
+        print('test_choose:', test_choose)
+        test_data = data[6599:9899, 1:3]
+        label_test_data = data[6599:9899, 0:1]
+    # test_data = data[6599:9899, 1:3]
+    # label_test_data = data[6599:9899, 0:1]
+    
     train_X, train_Y, test_X, test_Y = list(), list(), list(), list()
     for i in range(len(train_data) - seq_len - pre_len):
         train_X.append(np.array(train_data[i : i + seq_len]))
-        train_Y.append(np.array(train_data[i + seq_len : i + seq_len + pre_len]))
+        train_Y.append(np.array(label_train_data[i + seq_len : i + seq_len + pre_len]))
     for i in range(len(test_data) - seq_len - pre_len):
         test_X.append(np.array(test_data[i : i + seq_len]))
-        test_Y.append(np.array(test_data[i + seq_len : i + seq_len + pre_len]))
+        test_Y.append(np.array(label_test_data[i + seq_len : i + seq_len + pre_len]))
     return np.array(train_X), np.array(train_Y), np.array(test_X), np.array(test_Y)
 
 
 def generate_torch_datasets(
-    data, seq_len, pre_len, time_len=None, split_ratio=0.8, normalize=True
+    data, seq_len, pre_len, time_len=None, split_ratio=0.8, normalize=True, test_choose=0
 ):
     train_X, train_Y, test_X, test_Y = generate_dataset(
         data,
@@ -55,6 +71,7 @@ def generate_torch_datasets(
         time_len=time_len,
         split_ratio=split_ratio,
         normalize=normalize,
+        test_choose=test_choose,
     )
     train_dataset = torch.utils.data.TensorDataset(
         torch.FloatTensor(train_X), torch.FloatTensor(train_Y)
