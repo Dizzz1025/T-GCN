@@ -14,10 +14,12 @@ class SupervisedForecastTask(pl.LightningModule):
         model: nn.Module,
         regressor="linear",
         loss="mse",
-        pre_len: int = 3,
+        pre_len: int = 12,
         learning_rate: float = 1e-3,
         weight_decay: float = 1.5e-3,
         feat_max_val: float = 1.0,
+        input_dim: int = 2,
+        target_idx: int = 0,
         **kwargs
     ):
         super(SupervisedForecastTask, self).__init__()
@@ -34,12 +36,18 @@ class SupervisedForecastTask(pl.LightningModule):
         )
         self._loss = loss
         self.feat_max_val = feat_max_val
-
-    def forward(self, x):
+        self.feature_projection = nn.Linear(input_dim, 1)
+        self.target_idx = target_idx
+        self.val_mse = torchmetrics.MeanSquaredError()
+        self.val_mae = torchmetrics.MeanAbsoluteError()
+    def forward(self, x, adj):
         # (batch_size, seq_len, num_nodes)
-        batch_size, _, num_nodes = x.size()
+        batch_size, seq_len, num_nodes, F = x.size()
+        x_flat = x.reshape(-1, F)
+        x_projected = self.feature_projection(x_flat)
+        x_input = x_projected.reshape(batch_size, seq_len, num_nodes)
         # (batch_size, num_nodes, hidden_dim)
-        hidden = self.model(x)
+        hidden = self.model(x_input, adj)
         # (batch_size * num_nodes, hidden_dim)
         hidden = hidden.reshape((-1, hidden.size(2)))
         # (batch_size * num_nodes, pre_len)
@@ -52,12 +60,12 @@ class SupervisedForecastTask(pl.LightningModule):
 
     def shared_step(self, batch, batch_idx):
         # (batch_size, seq_len/pre_len, num_nodes)
-        x, y = batch
+        x, y, adj = batch
         num_nodes = x.size(2)
-        predictions = self(x)
+        predictions = self(x, adj)
         predictions = predictions.transpose(1, 2).reshape((-1, num_nodes))
-        y = y.reshape((-1, y.size(2)))
-        return predictions, y
+        y_target = y[:, :, :, self.target_idx].reshape((-1, num_nodes))
+        return predictions, y_target
 
     def loss(self, inputs, targets):
         if self._loss == "mse":
@@ -74,25 +82,30 @@ class SupervisedForecastTask(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         predictions, y = self.shared_step(batch, batch_idx)
-        predictions = predictions * self.feat_max_val
-        y = y * self.feat_max_val
+        # predictions = predictions * self.feat_max_val
+        # y = y * self.feat_max_val
         loss = self.loss(predictions, y)
-        rmse = torch.sqrt(torchmetrics.functional.mean_squared_error(predictions, y))
-        mae = torchmetrics.functional.mean_absolute_error(predictions, y)
-        accuracy = utils.metrics.accuracy(predictions, y)
-        r2 = utils.metrics.r2(predictions, y)
-        explained_variance = utils.metrics.explained_variance(predictions, y)
-        metrics = {
-            "val_loss": loss,
-            "RMSE": rmse,
-            "MAE": mae,
-            "accuracy": accuracy,
-            "R2": r2,
-            "ExplainedVar": explained_variance,
-        }
-        self.log_dict(metrics)
-        return predictions.reshape(batch[1].size()), y.reshape(batch[1].size())
-
+        # rmse = torch.sqrt(torchmetrics.functional.mean_squared_error(predictions, y))
+        # mae = torchmetrics.functional.mean_absolute_error(predictions, y)
+        # accuracy = utils.metrics.accuracy(predictions, y)
+        # r2 = utils.metrics.r2(predictions, y)
+        # explained_variance = utils.metrics.explained_variance(predictions, y)
+        # metrics = {
+        #     "val_loss": loss,
+        #     "RMSE": rmse,
+        #     "MAE": mae,
+        #     "accuracy": accuracy,
+        #     "R2": r2,
+        #     "ExplainedVar": explained_variance,
+        # }
+        # self.log_dict(metrics)
+        mse = self.val_mse(predictions, y)
+        mae = self.val_mae(predictions, y)
+        # 使用 self.log 记录对象，Lightning 会在 Epoch 结束时自动计算正确的全局平均值
+        self.log("val_mse", self.val_mse, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_mae", self.val_mae, on_step=False, on_epoch=True)
+        target_shape = (batch[1].size(0), batch[1].size(1), batch[1].size(2))
+        return predictions.reshape(target_shape), y.reshape(target_shape)
     def test_step(self, batch, batch_idx):
         pass
 
