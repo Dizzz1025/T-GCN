@@ -154,4 +154,4 @@ lightning_logs/
 # Scripts
 scripts/
 *.png
-data/
+/data/

@@ -13,8 +13,8 @@ import os
 # 数据路径配置（与 main 保持一致）
 DATA_PATHS = {
     "sim": {
-        "feat": "data/sim/test/charged5_interp_xy_norm.pkl", 
-        "adj": "data/sim/test/edges_test_charged5.npy"
+        "feat": "data/sim/test/springs5_interp_xy_norm.pkl", 
+        "adj": "data/sim/test/edges_test_springs5.npy"
     },
 }
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     # 必须提供的参数
-    parser.add_argument("--ckpt_path", type=str, help="Checkpoint 文件的路径", default="lightning_logs/sim/version_2/checkpoints/epoch=7-step=8000.ckpt")
+    parser.add_argument("--ckpt_path", type=str, help="Checkpoint 文件的路径", default="lightning_logs/sim/version_2/checkpoints/epoch=45-step=46000.ckpt")
     parser.add_argument("--data", type=str, default="sim", choices=("sim"))
     parser.add_argument("--model_name", type=str, default="TGCN", choices=("GCN", "GRU", "TGCN"))
     
