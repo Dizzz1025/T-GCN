@@ -13,8 +13,8 @@ import os
 # 数据路径配置（与 main 保持一致）
 DATA_PATHS = {
     "sim": {
-        "feat": "data/sim/merged_interp_xy_norm.pkl", 
-        "adj": "data/sim/edges_train_merged.npy"
+        "feat": "data/sim/test/charged5_interp_xy_norm.pkl", 
+        "adj": "data/sim/test/edges_test_charged5.npy"
     },
 }
 
@@ -72,22 +72,24 @@ def run_test(args):
             batch = [b.to(task.device) if torch.is_tensor(b) else b for b in batch]
             # 调用模型的 validation_step 逻辑
             pred, y = task.validation_step(batch, 0)
-            x, y, adj, y_mask = batch
+            _, _, _, y_mask = batch
             # 这里的形状通常是 (Batch, pre_len, Nodes)
             # 我们取每个 batch 的第一个时间步进行拼接
             all_preds.append(pred.cpu().numpy())
             all_y.append(y.cpu().numpy())
             all_masks.append(y_mask.cpu().numpy())
-
     # 拼接所有 Batch: (Total_Samples, pre_len, Nodes)
     all_preds = np.concatenate(all_preds, axis=0)
     all_y = np.concatenate(all_y, axis=0)
     all_masks = np.concatenate(all_masks, axis=0)
-    
+    if all_masks.ndim == 4:
+        all_masks = np.squeeze(all_masks, axis=-1)
+    # print(all_preds.shape, all_y.shape, all_masks.shape)
     # 转换形状: (Total_Samples * Nodes, pre_len)
     # 先转置为 (Total_Samples, Nodes, pre_len) 再展平前两维
     all_preds = all_preds.transpose(0, 2, 1).reshape(-1, args.pre_len)
     all_y = all_y.transpose(0, 2, 1).reshape(-1, args.pre_len)
+    all_masks = all_masks.transpose(0, 2, 1).reshape(-1, args.pre_len)
     # 计算带掩码的指标
     valid_idx = all_masks > 0
     if np.any(valid_idx):
@@ -133,8 +135,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     # 必须提供的参数
-    parser.add_argument("--ckpt_path", type=str, help="Checkpoint 文件的路径", default="lightning_logs/nyc/version_15/checkpoints/epoch=299-step=19800.ckpt")
-    parser.add_argument("--data", type=str, default="nyc", choices=("shenzhen", "losloop", "nyc"))
+    parser.add_argument("--ckpt_path", type=str, help="Checkpoint 文件的路径", default="lightning_logs/sim/version_2/checkpoints/epoch=7-step=8000.ckpt")
+    parser.add_argument("--data", type=str, default="sim", choices=("sim"))
     parser.add_argument("--model_name", type=str, default="TGCN", choices=("GCN", "GRU", "TGCN"))
     
     # 环境参数
@@ -143,7 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32)
     
     # 以下参数通常需要与训练时保持一致，以便正确构建模型结构
-    parser.add_argument("--pre_len", type=int, default=12)
+    parser.add_argument("--pre_len", type=int, default=59)
     parser.add_argument("--input_dim", type=int, default=2)
     parser.add_argument("--target_idx", type=int, default=0)
     parser.add_argument("--hidden_dim", type=int, default=64)
